@@ -31,6 +31,24 @@ public:
   /// default constructor
   GeneratorJEPythia8POWHEG(std::string confpath = "pwgpath")
   {
+    // Assign events to generate with POWHEG
+    unsigned int nPowhegEvents = mSimConfig.getNEvents();
+    if (nPowhegEvents == 0) {
+      // Try to set the number of events from the environment variable
+      unsigned int nEnvEvents = getenv("O2SIM_DPL_NEVENTS") ? std::stoi(getenv("O2SIM_DPL_NEVENTS")) : 0;
+      if (nEnvEvents > 0) {
+        nPowhegEvents = nEnvEvents;
+      } else {
+        LOG(fatal) << "Number of events not set or set to 0.";
+        exit(1);
+      }
+    }
+    // Check on nEvents to generate with POWHEG
+    // due to integer limit hardcoded in the generator
+    if (nPowhegEvents > std::numeric_limits<int>::max()) {
+      LOG(fatal) << "Number of events for POWHEG exceeds the maximum allowed value";
+      exit(1);
+    }
     // Check if file exist and is not empty
     if (std::filesystem::exists(confpath) && std::filesystem::file_size(confpath) > 0) {
       // Copy the file to the current directory
@@ -51,7 +69,7 @@ public:
         if (line.find("numevts") != std::string::npos)
         {
           // Set the number of events to the number of events defined in the configuration
-          line = "numevts " + std::to_string(mSimConfig.getNEvents());
+          line = "numevts " + std::to_string(nPowhegEvents);
           // replace it in the file
           isnumevts = true;
         }
@@ -61,7 +79,7 @@ public:
         dst << "iseed " << seed << std::endl;
       }
       if (!isnumevts) {
-        dst << "numevts " << mSimConfig.getNEvents() << std::endl;
+        dst << "numevts " << nPowhegEvents << std::endl;
       }
       src.close();
       dst.close();
