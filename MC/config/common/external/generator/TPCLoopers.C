@@ -419,6 +419,48 @@ class GenLoopersInjector : public Generator
             return true;
         }
 
+        std::vector<TParticle> genProcessor(Generator* gen)
+        {
+            auto unit_transformer = [](auto &p, auto pos_unit, auto time_unit, auto en_unit, auto mom_unit)
+            {
+                p.SetMomentum(p.Px() * mom_unit, p.Py() * mom_unit, p.Pz() * mom_unit, p.Energy() * en_unit);
+                p.SetProductionVertex(p.Vx() * pos_unit, p.Vy() * pos_unit, p.Vz() * pos_unit, p.T() * time_unit);
+            };
+
+            auto index_transformer = [](auto &p, int offset)
+            {
+                for (int i = 0; i < 2; ++i)
+                {
+                    if (p.GetMother(i) != -1)
+                    {
+                        const auto newindex = p.GetMother(i) + offset;
+                        p.SetMother(i, newindex);
+                    }
+                }
+                if (p.GetNDaughters() > 0)
+                {
+                    for (int i = 0; i < 2; ++i)
+                    {
+                        const auto newindex = p.GetDaughter(i) + offset;
+                        p.SetDaughter(i, newindex);
+                    }
+                }
+            };
+            auto parts = gen->getParticles();
+            auto time_unit = gen->getTimeUnit();
+            auto pos_unit = gen->getPositionUnit();
+            auto mom_unit = gen->getMomentumUnit();
+            auto energy_unit = gen->getEnergyUnit();
+            for (auto &p : parts)
+            {
+                // apply the mother-daugher index transformation
+                index_transformer(p, mParticles.size());
+                // apply unit transformation of sub-generator
+                unit_transformer(p, pos_unit, time_unit, energy_unit, mom_unit);
+            }
+            return parts;
+        }
+
         Bool_t importParticles() override
         {
             mParticles.clear(); // Clear the particles stack before importing new ones
@@ -426,26 +468,43 @@ class GenLoopersInjector : public Generator
             mKineGen->clearParticles(); // Clear particles from O2 Kinematics generator
             mGenTPCLoopers->clearParticles(); // Clear particles from GenTPCLoopers
             auto stat1 = mKineGen->importParticles();
-            // Check size of mParticles stack and set loopers accordingly if mAdaptiveLoopers is true
-            if (mAdaptiveLoopers)
+            if (stat1)
             {
-                int nParticles = mParticles.size();
-                if (nParticles > 0)
+                // Include particles from O2 Kinematics generator
+                auto kineparts = genProcessor(mKineGen.get());
+                LOG(info) << "Size of kineparts: " << kineparts.size();
+                mParticles.insert(mParticles.end(), kineparts.begin(), kineparts.end());
+                LOG(info) << "Size mParticles at kine stage " << mParticles.size();
+                // Check size of mParticles stack and set loopers accordingly if mAdaptiveLoopers is true
+                if (mAdaptiveLoopers)
                 {
-                    // Calculate the number of loopers to inject adaptively
-                    short int nLoopers = static_cast<short int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFractionPairs)));
-                    short int nLoopersPairs = static_cast<short int>(std::round(nLoopers * mLoopsFractionPairs));
-                    short int nLoopersCompton = nLoopers - nLoopersPairs;
-                    mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
-                    mGenTPCLoopers->generateEvent();
+                    int nParticles = mParticles.size();
+                    if (nParticles > 0)
+                    {
+                        // Calculate the number of loopers to inject adaptively
+                        short int nLoopers = static_cast<short int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFractionPairs)));
+                        short int nLoopersPairs = static_cast<short int>(std::round(nLoopers * mLoopsFractionPairs));
+                        short int nLoopersCompton = nLoopers - nLoopersPairs;
+                        mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
+                        LOG(info) << "Adaptive loopers: " << nLoopers << " (pairs: " << nLoopersPairs << ", compton: " << nLoopersCompton << ")";
+                    } else {
+                        LOG(info) << "No particles found in O2 Kinematics, no loopers will be generated";
+                        return false;
+                    }
                 }
-            }
-            auto stat2 = mGenTPCLoopers->importParticles();
-            if (stat1 && stat2)
-            {
-                // Merge particles from both generators
-                mParticles.insert(mParticles.end(), mKineGen->getParticles().begin(), mKineGen->getParticles().end());
-                mParticles.insert(mParticles.end(), mGenTPCLoopers->getParticles().begin(), mGenTPCLoopers->getParticles().end());
+                // Generate loopers using GenTPCLoopers
+                // this is valid also when number of loopers is fixed
+                mGenTPCLoopers->generateEvent();
+                auto stat2 = mGenTPCLoopers->importParticles();
+                if (!stat2) {
+                    LOG(error) << "Failed to import particles from GenTPCLoopers";
+                    return false;
+                }
+                // Include particles from GenTPCLoopers
+                auto loopers = genProcessor(mGenTPCLoopers.get());
+                LOG(info) << "Size of loopers: " << loopers.size();
+                mParticles.insert(mParticles.end(), loopers.begin(), loopers.end());
+                LOG(info) << "Size mParticles at loopers stage " << mParticles.size();
             } else {
                 LOG(error) << "Failed to import particles from O2 Kinematics or TPCLoopers";
                 return false;
@@ -457,7 +516,7 @@ class GenLoopersInjector : public Generator
         std::unique_ptr<GeneratorFromO2Kine> mKineGen = nullptr; // Instance of GeneratorFromO2Kine to read particles from O2 kinematics file
         std::unique_ptr<GenTPCLoopers> mGenTPCLoopers = nullptr; // Instance of GenTPCLoopers to generate loopers
         Bool_t mAdaptiveLoopers = true; // Flag to indicate if adaptive loopers are used
-        float mLoopsFraction = 0.1; // Fraction of loopers to be injected adaptively
+        float mLoopsFraction = 0.05; // Fraction of loopers to be injected adaptively
         float mLoopsFractionPairs = 0.08; // Fraction of loopers from Pairs
 };
 
@@ -541,7 +600,7 @@ FairGenerator *
 // Loopers are considered adaptive by default, meaning that the number of loopers is determined by the number of particles in the kinematics file per event
 FairGenerator *
 GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
-                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", float loopers_fraction = 0.1, float fraction_pairs = 0.08)
+                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", float loopers_fraction = 0.05, float fraction_pairs = 0.08)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
@@ -602,6 +661,38 @@ GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::
     model_pairs = isAlien[0] || isCCDB[0] ? local_names[0] : model_pairs;
     model_compton = isAlien[1] || isCCDB[1] ? local_names[1] : model_compton;
     auto generator = new o2::eventgen::GenLoopersInjector(kineFileName, model_pairs, model_compton, scaler_pair, scaler_compton);
-    generator->setLoopsFractions(loopers_fraction, fraction_pairs);
+    auto& extParams = o2::eventgen::GeneratorExternalParam::Instance();
+    auto config = extParams.config;
+    // Parse external configuration for loopers fractions if provided
+    if (!config.empty()) {
+        LOG(info) << "Using external configuration for loopers fractions: " << extParams.config;
+        // Try to parse as "<loopers_fraction>-<fraction_pairs>" or single value
+        size_t dash = config.find('-');
+        try {
+            if (dash == std::string::npos) {
+                float frac = std::stof(config);
+                if (frac >= 0 && frac < 1) {
+                    generator->setLoopsFractions(frac, fraction_pairs);
+                } else {
+                    throw std::invalid_argument("Out of range");
+                }
+            } else {
+                float frac1 = std::stof(config.substr(0, dash));
+                float frac2 = std::stof(config.substr(dash + 1));
+                if (frac1 >= 0 && frac1 < 1 && frac2 >= 0 && frac2 <= 1) {
+                    generator->setLoopsFractions(frac1, frac2);
+                } else {
+                    throw std::invalid_argument("Out of range");
+                }
+            }
+        } catch (...) {
+            LOG(warn) << "Invalid external configuration for loopers fractions: " << extParams.config;
+            LOG(warn) << "Expected format: <loopers_fraction>-<fraction_pairs> or a single value between [0,1).";
+            LOG(warn) << "Using default values instead.";
+            generator->setLoopsFractions(loopers_fraction, fraction_pairs);
+        }
+    } else {
+        generator->setLoopsFractions(loopers_fraction, fraction_pairs);
+    }
     return generator;
 }

@@ -157,6 +157,7 @@ parser.add_argument('--fwdmatching-4-param', action='store_true', help='excludes
 parser.add_argument('--fwdmatching-cut-4-param', action='store_true', help='apply selection cuts on position and angular parameters')
 # TPC loopers with external WGAN generator
 parser.add_argument('--disable-loopers', action='store_true', help='disables fast simulated TPC loopers')
+parser.add_argument('-confKeyLoopers',help='Config key parameters influencing the number of loopers in the simulation', default='')
 
 # Matching training for machine learning
 parser.add_argument('--fwdmatching-save-trainingdata', action='store_true', help='enables saving parameters at plane for matching training with machine learning')
@@ -863,17 +864,17 @@ for tf in range(1, NTIMEFRAMES + 1):
 
    # Include fast simulated TPC loopers
    if isActive('TPC') and not args.disable_loopers:
-      LOOPStask = createTask(name='sgngenloops_' + str(tf), needs=signalneeds, tf=tf, cwd='tf' + str(tf), lab=["GEN"], cpu=1, mem=1000)
-      LOOPScfgbase = "GeneratorFromO2Kine.randomize=true"
-      LOOPSinicfg = " --configFile $O2DPG_MC_CONFIG_ROOT/MC/config/common/ini/GeneratorLoopersInjector.ini"
-      LOOPSCONFKEY = constructConfigKeyArg(create_geant_config(args, LOOPScfgbase))
-      LOOPStask['cmd'] = '${O2_ROOT}/bin/o2-sim --noGeant --field ccdb -j 1 --vertexMode kNoVertex'                                                  \
-                            + ' --run ' + str(args.run) + ' ' + str(LOOPSCONFKEY) + ' -g external'                                                   \
-                            + ' -n ' + str(NSIGEVENTS) + ' --seed ' + str(TFSEED) + ' -o loops '                                                     \
-                            + embeddinto + ' --fromCollContext collisioncontext.root:' + signalprefix + LOOPSinicfg
-      kineFileName = 'loops_Kine.root'  # Kine file now has injected loopers
-      signalneeds = signalneeds + [LOOPStask['name']]
-      workflow['stages'].append(LOOPStask)
+      LOOPERStask = createTask(name='sgngenloopers_' + str(tf), needs=signalneeds, tf=tf, cwd='tf' + str(tf), lab=["GEN"], cpu=1, mem=1000)
+      LOOPERScfgbase = "GeneratorFromO2Kine.randomize=false" + (";GeneratorExternal.config=" + str(args.confKeyLoopers)) if args.confKeyLoopers != '' else ""
+      LOOPERSinicfg = " --configFile $O2DPG_MC_CONFIG_ROOT/MC/config/common/ini/GeneratorLoopersInjector.ini"
+      LOOPERSCONFKEY = constructConfigKeyArg(create_geant_config(args, LOOPERScfgbase))
+      LOOPERStask['cmd'] = '${O2_ROOT}/bin/o2-sim --noGeant --field ccdb -j 1 --vertexMode kNoVertex'                                                  \
+                            + ' --run ' + str(args.run) + ' ' + str(LOOPERSCONFKEY) + ' -g external'                                                   \
+                            + ' -n ' + str(NSIGEVENTS) + ' --seed ' + str(TFSEED) + ' -o loopers '                                                     \
+                            + embeddinto + ' --fromCollContext collisioncontext.root:' + signalprefix + LOOPERSinicfg
+      kineFileName = 'loopers_Kine.root'  # Kine file now has injected loopers
+      signalneeds = signalneeds + [LOOPERStask['name']]
+      workflow['stages'].append(LOOPERStask)
 
    sgnmem = 6000 if COLTYPE == 'PbPb' else 4000
    SGNtask=createTask(name='sgnsim_'+str(tf), needs=signalneeds, tf=tf, cwd='tf'+str(tf), lab=["GEANT"],
