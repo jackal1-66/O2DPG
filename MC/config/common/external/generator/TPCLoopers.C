@@ -243,6 +243,54 @@ class GenTPCLoopers : public Generator
             return true;
         }
 
+        Bool_t generateEvent(TH1D* t_hist)
+        {
+            // Clear the vector of pairs
+            mGenPairs.clear();
+            // Clear the vector of compton electrons
+            mGenElectrons.clear();
+            // Set number of loopers if poissonian params are available
+            if (mPoissonSet)
+            {
+                mNLoopersPairs = static_cast<short int>(std::round(mMultiplier[0] * PoissonPairs()));
+            }
+            if (mGaussSet)
+            {
+                mNLoopersCompton = static_cast<short int>(std::round(mMultiplier[1] * GaussianElectrons()));
+            }
+            // Find the time histogram edge
+            double time_constraint = t_hist->GetXaxis()->GetXmax();
+            LOG(info) << "Time constraint for loopers: " << time_constraint << " ns";
+            // Generate pairs
+            for (int i = 0; i < mNLoopersPairs; ++i)
+            {
+                std::vector<double> pair = mONNX_pair->generate_sample();
+                // Apply the inverse transformation using the scaler
+                std::vector<double> transformed_pair = mScaler_pair->inverse_transform(pair);
+                // Check if the time constraint is satisfied
+                while ((transformed_pair[9] / 1e9) > time_constraint)
+                {
+                    transformed_pair[9] = t_hist->GetRandom() * 1e9; // Regenerate time if it exceeds the constraint, multiplied by 1e9 to account for ratio in importParticles
+                }
+                LOG(info) << "Transformed pair time: " << transformed_pair[9] / 1e9 << " ns";
+                mGenPairs.push_back(transformed_pair);
+            }
+            // Generate compton electrons
+            for (int i = 0; i < mNLoopersCompton; ++i)
+            {
+                std::vector<double> electron = mONNX_compton->generate_sample();
+                // Apply the inverse transformation using the scaler
+                std::vector<double> transformed_electron = mScaler_compton->inverse_transform(electron);
+                while ((transformed_electron[6] / 1e9) > time_constraint)
+                {
+                    transformed_electron[6] = t_hist->GetRandom() * 1e9; // Regenerate time if it exceeds the constraint, multiplied by 1e9 to account for ratio in importParticles
+                }
+                LOG(info) << "Transformed electron time: " << transformed_electron[6] / 1e9 << " ns";
+                mGenElectrons.push_back(transformed_electron);
+            }
+            return true;
+        }
+
         Bool_t importParticles() override
         {
             // Get looper pairs from the event
@@ -390,10 +438,16 @@ class GenLoopersInjector : public Generator
             Generator::setEnergyUnit(1.0);
         }
 
-        void setAdaptiveLoopers(Bool_t adaptive)
+        void setAdaptiveLoopers(Bool_t &adaptive)
         {
             mAdaptiveLoopers = adaptive;
             LOG(info) << "Adaptive loopers: " << (mAdaptiveLoopers ? "ON" : "OFF");
+        }
+
+        void setTimeConstraint(Bool_t &constraint)
+        {
+            mTimeConstraint = constraint;
+            LOG(info) << "Time constraint: " << (mTimeConstraint ? "ON" : "OFF");
         }
 
         void setLoopsFractions(float &fraction, float &fractionPairs)
@@ -458,6 +512,19 @@ class GenLoopersInjector : public Generator
                 // apply unit transformation of sub-generator
                 unit_transformer(p, pos_unit, time_unit, energy_unit, mom_unit);
             }
+            // Print Maximum values of time
+            double maxTime = 0.0;
+            double minTime = 0.0;
+            for (const auto &p : parts) {
+                if (p.T() > maxTime) {
+                    maxTime = p.T();
+                }
+                if (p.T() < minTime) {
+                    minTime = p.T();
+                }
+            }
+            LOG(info) << "Maximum time in the event: " << maxTime;
+            LOG(info) << "Minimum time in the event: " << minTime;
             return parts;
         }
 
@@ -475,9 +542,20 @@ class GenLoopersInjector : public Generator
                 LOG(info) << "Size of kineparts: " << kineparts.size();
                 mParticles.insert(mParticles.end(), kineparts.begin(), kineparts.end());
                 LOG(info) << "Size mParticles at kine stage " << mParticles.size();
+                double maxTime = 0.0;
+                // Find the maximum time in the imported particles
+                for (const auto &p : mParticles) {
+                    if (p.T() > maxTime) {
+                        maxTime = p.T();
+                    }
+                }
+                // Create a histogram containing original generator time values
+                auto time_hist = std::make_unique<TH1D>("time_hist", "Time Histogram", 1000, 0., maxTime);
+                for (const auto &p : mParticles) {
+                    time_hist->Fill(p.T());
+                }
                 // Check size of mParticles stack and set loopers accordingly if mAdaptiveLoopers is true
-                if (mAdaptiveLoopers)
-                {
+                if (mAdaptiveLoopers) {
                     int nParticles = mParticles.size();
                     if (nParticles > 0)
                     {
@@ -494,7 +572,11 @@ class GenLoopersInjector : public Generator
                 }
                 // Generate loopers using GenTPCLoopers
                 // this is valid also when number of loopers is fixed
-                mGenTPCLoopers->generateEvent();
+                if (mTimeConstraint) {
+                    mGenTPCLoopers->generateEvent(time_hist.get());
+                } else {
+                    mGenTPCLoopers->generateEvent();
+                }
                 auto stat2 = mGenTPCLoopers->importParticles();
                 if (!stat2) {
                     LOG(error) << "Failed to import particles from GenTPCLoopers";
@@ -506,7 +588,7 @@ class GenLoopersInjector : public Generator
                 mParticles.insert(mParticles.end(), loopers.begin(), loopers.end());
                 LOG(info) << "Size mParticles at loopers stage " << mParticles.size();
             } else {
-                LOG(error) << "Failed to import particles from O2 Kinematics or TPCLoopers";
+                LOG(error) << "Failed to import particles from O2 Kinematics";
                 return false;
             }
             return true;
@@ -518,6 +600,8 @@ class GenLoopersInjector : public Generator
         Bool_t mAdaptiveLoopers = true; // Flag to indicate if adaptive loopers are used
         float mLoopsFraction = 0.05; // Fraction of loopers to be injected adaptively
         float mLoopsFractionPairs = 0.08; // Fraction of loopers from Pairs
+        Bool_t mTimeConstraint = true; // Flag to indicate if time constraint is applied
+        double mTimeConstraintValue = 0.0; // Time constraint value, adaptively set based on the maximum time of the main generator events
 };
 
 } // namespace eventgen
@@ -600,7 +684,7 @@ FairGenerator *
 // Loopers are considered adaptive by default, meaning that the number of loopers is determined by the number of particles in the kinematics file per event
 FairGenerator *
 GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
-                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", float loopers_fraction = 0.05, float fraction_pairs = 0.08)
+                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = true, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
@@ -694,5 +778,7 @@ GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::
     } else {
         generator->setLoopsFractions(loopers_fraction, fraction_pairs);
     }
+    // Set adaptive time constraint flag
+    generator->setTimeConstraint(time_constraint);
     return generator;
 }
