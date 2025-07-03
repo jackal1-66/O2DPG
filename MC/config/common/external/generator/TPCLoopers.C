@@ -450,6 +450,18 @@ class GenLoopersInjector : public Generator
             LOG(info) << "Time constraint: " << (mTimeConstraint ? "ON" : "OFF");
         }
 
+        void setDecreasingLoopers(Bool_t &decreasing)
+        {
+            mDecreasingLoopers = decreasing;
+            LOG(info) << "Decreasing loopers: " << (mDecreasingLoopers ? "ON" : "OFF");
+            auto steps = Generator::getTotalNEvents();
+            if (mDecreasingLoopers && steps > 0)
+            {
+                mSlopeStep = (mLoopsFraction - mSlopeMinimum) / steps;
+                LOG(info) << "Slope step set to: " << mSlopeStep;
+            }
+        }
+
         void setLoopsFractions(float &fraction, float &fractionPairs)
         {
             if (fraction < 0 || fraction >= 1)
@@ -560,11 +572,14 @@ class GenLoopersInjector : public Generator
                     if (nParticles > 0)
                     {
                         // Calculate the number of loopers to inject adaptively
-                        short int nLoopers = static_cast<short int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFractionPairs)));
+                        short int nLoopers = static_cast<short int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFraction)));
                         short int nLoopersPairs = static_cast<short int>(std::round(nLoopers * mLoopsFractionPairs));
                         short int nLoopersCompton = nLoopers - nLoopersPairs;
                         mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
                         LOG(info) << "Adaptive loopers: " << nLoopers << " (pairs: " << nLoopersPairs << ", compton: " << nLoopersCompton << ")";
+                        if (mDecreasingLoopers) {
+                            mLoopsFraction = mLoopsFraction - mSlopeStep;
+                        }
                     } else {
                         LOG(info) << "No particles found in O2 Kinematics, no loopers will be generated";
                         return false;
@@ -602,6 +617,9 @@ class GenLoopersInjector : public Generator
         float mLoopsFractionPairs = 0.08; // Fraction of loopers from Pairs
         Bool_t mTimeConstraint = true; // Flag to indicate if time constraint is applied
         double mTimeConstraintValue = 0.0; // Time constraint value, adaptively set based on the maximum time of the main generator events
+        Bool_t mDecreasingLoopers = false; // Flag to indicate if decreasing loopers are used
+        float mSlopeMinimum = 0.02; // Fraction of loopers to be injected adaptively
+        float mSlopeStep = 0.01; // Step of decreasing slope
 };
 
 } // namespace eventgen
@@ -684,7 +702,7 @@ FairGenerator *
 // Loopers are considered adaptive by default, meaning that the number of loopers is determined by the number of particles in the kinematics file per event
 FairGenerator *
 GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
-                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = true, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
+                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = false, bool decreasing_loopers = true, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
@@ -780,5 +798,7 @@ GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::
     }
     // Set adaptive time constraint flag
     generator->setTimeConstraint(time_constraint);
+    // set decreasing loopers distribution
+    generator->setDecreasingLoopers(decreasing_loopers);
     return generator;
 }
