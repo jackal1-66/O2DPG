@@ -291,6 +291,56 @@ class GenTPCLoopers : public Generator
             return true;
         }
 
+        Bool_t generateEvent(double &time_limit)
+        {
+            // Time_limit is in nanoseconds
+            // Clear the vector of pairs
+            mGenPairs.clear();
+            // Clear the vector of compton electrons
+            mGenElectrons.clear();
+            // Set number of loopers if poissonian params are available
+            if (mPoissonSet)
+            {
+                mNLoopersPairs = static_cast<short int>(std::round(mMultiplier[0] * PoissonPairs()));
+            }
+            if (mGaussSet)
+            {
+                mNLoopersCompton = static_cast<short int>(std::round(mMultiplier[1] * GaussianElectrons()));
+            }
+            // Find the time histogram edge
+            double time_constraint = time_limit;
+            LOG(info) << "Time constraint for loopers: " << time_constraint << " ns";
+            // Generate pairs
+            for (int i = 0; i < mNLoopersPairs; ++i)
+            {
+                std::vector<double> pair = mONNX_pair->generate_sample();
+                // Apply the inverse transformation using the scaler
+                std::vector<double> transformed_pair = mScaler_pair->inverse_transform(pair);
+                // Check if the time constraint is satisfied
+                while ((transformed_pair[9]) > time_constraint)
+                {
+                    // Regenerate time using random number generator with maximum time_constraint
+                    transformed_pair[9] = gRandom->Uniform(0., time_constraint); // Regenerate time if it exceeds the constraint, scaling is not needed because time_limit is already in nanoseconds
+                }
+                LOG(info) << "Transformed pair time: " << transformed_pair[9] << " ns";
+                mGenPairs.push_back(transformed_pair);
+            }
+            // Generate compton electrons
+            for (int i = 0; i < mNLoopersCompton; ++i)
+            {
+                std::vector<double> electron = mONNX_compton->generate_sample();
+                // Apply the inverse transformation using the scaler
+                std::vector<double> transformed_electron = mScaler_compton->inverse_transform(electron);
+                while ((transformed_electron[6] / 1e9) > time_constraint)
+                {
+                    transformed_electron[6] = gRandom->Uniform(0., time_constraint); // Regenerate time if it exceeds the constraint, scaling is not needed because time_limit is already in nanoseconds
+                }
+                LOG(info) << "Transformed electron time: " << transformed_electron[6] << " ns";
+                mGenElectrons.push_back(transformed_electron);
+            }
+            return true;
+        }
+
         Bool_t importParticles() override
         {
             // Get looper pairs from the event
@@ -436,6 +486,16 @@ class GenLoopersInjector : public Generator
             Generator::setPositionUnit(1.0);
             Generator::setMomentumUnit(1.0);
             Generator::setEnergyUnit(1.0);
+            mContextFile = std::filesystem::exists("collisioncontext.root") ? TFile::Open("collisioncontext.root") : nullptr;
+            mCollisionContext = mContextFile ? (o2::steer::DigitizationContext *)mContextFile->Get("DigitizationContext") : nullptr;
+            mInteractionTimeRecords = mCollisionContext ? mCollisionContext->getEventRecords() : std::vector<o2::InteractionTimeRecord>{};
+            if (mInteractionTimeRecords.empty())
+            {
+                LOG(warn) << "Error: No interaction time records found in the collision context!";
+                exit(1);
+            } else {
+                LOG(info) << "Interaction Time records has " << mInteractionTimeRecords.size() << " entries.";
+            }
         }
 
         void setAdaptiveLoopers(Bool_t &adaptive)
@@ -482,6 +542,10 @@ class GenLoopersInjector : public Generator
         Bool_t generateEvent() override
         {
             // Trivial, real work in importParticles
+            LOG(info) << "mCurrentEvent is " << mCurrentEvent;
+            LOG(info) << "Current event time: " << ((mCurrentEvent < mInteractionTimeRecords.size() - 1) ? std::to_string(mInteractionTimeRecords[mCurrentEvent + 1].bc2ns() - mInteractionTimeRecords[mCurrentEvent].bc2ns()) : "Final Event till the end") << " ns";
+            mTimeLimit = (mCurrentEvent < mInteractionTimeRecords.size() - 1) ? mInteractionTimeRecords[mCurrentEvent + 1].bc2ns() - mInteractionTimeRecords[mCurrentEvent].bc2ns() : 0.0;
+            mCurrentEvent++;
             return true;
         }
 
@@ -587,8 +651,10 @@ class GenLoopersInjector : public Generator
                 }
                 // Generate loopers using GenTPCLoopers
                 // this is valid also when number of loopers is fixed
-                if (mTimeConstraint) {
+                if (mTimeConstraint && mTimeLimit == 0.0) {
                     mGenTPCLoopers->generateEvent(time_hist.get());
+                } else if (mTimeLimit > 0.) {
+                    mGenTPCLoopers->generateEvent(mTimeLimit);
                 } else {
                     mGenTPCLoopers->generateEvent();
                 }
@@ -620,6 +686,11 @@ class GenLoopersInjector : public Generator
         Bool_t mDecreasingLoopers = false; // Flag to indicate if decreasing loopers are used
         float mSlopeMinimum = 0.02; // Fraction of loopers to be injected adaptively
         float mSlopeStep = 0.01; // Step of decreasing slope
+        TFile *mContextFile = nullptr;                                  // Input collision context file
+        o2::steer::DigitizationContext *mCollisionContext = nullptr;    // Pointer to the digitization context
+        std::vector<o2::InteractionTimeRecord> mInteractionTimeRecords; // Interaction time records from collision context
+        int mCurrentEvent = 0; // Current event number, used for decreasing loopers
+        double mTimeLimit = 0.0; // Time limit for the current event, used for decreasing loopers
 };
 
 } // namespace eventgen
@@ -702,7 +773,7 @@ FairGenerator *
 // Loopers are considered adaptive by default, meaning that the number of loopers is determined by the number of particles in the kinematics file per event
 FairGenerator *
 GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
-                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = false, bool decreasing_loopers = true, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
+                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = true, bool decreasing_loopers = false, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
