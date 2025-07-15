@@ -218,11 +218,11 @@ class GenTPCLoopers : public Generator
             // Set number of loopers if poissonian params are available
             if (mPoissonSet)
             {
-                mNLoopersPairs = static_cast<short int>(std::round(mMultiplier[0] * PoissonPairs()));
+                mNLoopersPairs = static_cast<unsigned int>(std::round(mMultiplier[0] * PoissonPairs()));
             }
             if (mGaussSet)
             {
-                mNLoopersCompton = static_cast<short int>(std::round(mMultiplier[1] * GaussianElectrons()));
+                mNLoopersCompton = static_cast<unsigned int>(std::round(mMultiplier[1] * GaussianElectrons()));
             }
             // Generate pairs
             for (int i = 0; i < mNLoopersPairs; ++i)
@@ -252,11 +252,11 @@ class GenTPCLoopers : public Generator
             // Set number of loopers if poissonian params are available
             if (mPoissonSet)
             {
-                mNLoopersPairs = static_cast<short int>(std::round(mMultiplier[0] * PoissonPairs()));
+                mNLoopersPairs = static_cast<unsigned int>(std::round(mMultiplier[0] * PoissonPairs()));
             }
             if (mGaussSet)
             {
-                mNLoopersCompton = static_cast<short int>(std::round(mMultiplier[1] * GaussianElectrons()));
+                mNLoopersCompton = static_cast<unsigned int>(std::round(mMultiplier[1] * GaussianElectrons()));
             }
             // Find the time histogram edge
             double time_constraint = t_hist->GetXaxis()->GetXmax();
@@ -268,10 +268,10 @@ class GenTPCLoopers : public Generator
                 // Apply the inverse transformation using the scaler
                 std::vector<double> transformed_pair = mScaler_pair->inverse_transform(pair);
                 // Check if the time constraint is satisfied
-                while ((transformed_pair[9] / 1e9) > time_constraint)
-                {
+                //while ((transformed_pair[9] / 1e9) > time_constraint)
+                //{
                     transformed_pair[9] = t_hist->GetRandom() * 1e9; // Regenerate time if it exceeds the constraint, multiplied by 1e9 to account for ratio in importParticles
-                }
+                //}
                 LOG(info) << "Transformed pair time: " << transformed_pair[9] / 1e9 << " ns";
                 mGenPairs.push_back(transformed_pair);
             }
@@ -281,10 +281,10 @@ class GenTPCLoopers : public Generator
                 std::vector<double> electron = mONNX_compton->generate_sample();
                 // Apply the inverse transformation using the scaler
                 std::vector<double> transformed_electron = mScaler_compton->inverse_transform(electron);
-                while ((transformed_electron[6] / 1e9) > time_constraint)
-                {
+                //while ((transformed_electron[6] / 1e9) > time_constraint)
+                //{
                     transformed_electron[6] = t_hist->GetRandom() * 1e9; // Regenerate time if it exceeds the constraint, multiplied by 1e9 to account for ratio in importParticles
-                }
+                //}
                 LOG(info) << "Transformed electron time: " << transformed_electron[6] / 1e9 << " ns";
                 mGenElectrons.push_back(transformed_electron);
             }
@@ -301,11 +301,11 @@ class GenTPCLoopers : public Generator
             // Set number of loopers if poissonian params are available
             if (mPoissonSet)
             {
-                mNLoopersPairs = static_cast<short int>(std::round(mMultiplier[0] * PoissonPairs()));
+                mNLoopersPairs = static_cast<unsigned int>(std::round(mMultiplier[0] * PoissonPairs()));
             }
             if (mGaussSet)
             {
-                mNLoopersCompton = static_cast<short int>(std::round(mMultiplier[1] * GaussianElectrons()));
+                mNLoopersCompton = static_cast<unsigned int>(std::round(mMultiplier[1] * GaussianElectrons()));
             }
             // Find the time histogram edge
             double time_constraint = time_limit;
@@ -317,11 +317,11 @@ class GenTPCLoopers : public Generator
                 // Apply the inverse transformation using the scaler
                 std::vector<double> transformed_pair = mScaler_pair->inverse_transform(pair);
                 // Check if the time constraint is satisfied
-                while ((transformed_pair[9]) > time_constraint)
-                {
+                //while ((transformed_pair[9]) > time_constraint)
+                //{
                     // Regenerate time using random number generator with maximum time_constraint
                     transformed_pair[9] = gRandom->Uniform(0., time_constraint); // Regenerate time if it exceeds the constraint, scaling is not needed because time_limit is already in nanoseconds
-                }
+                //}
                 LOG(info) << "Transformed pair time: " << transformed_pair[9] << " ns";
                 mGenPairs.push_back(transformed_pair);
             }
@@ -331,10 +331,10 @@ class GenTPCLoopers : public Generator
                 std::vector<double> electron = mONNX_compton->generate_sample();
                 // Apply the inverse transformation using the scaler
                 std::vector<double> transformed_electron = mScaler_compton->inverse_transform(electron);
-                while ((transformed_electron[6] / 1e9) > time_constraint)
-                {
+                //while ((transformed_electron[6] / 1e9) > time_constraint)
+                //{
                     transformed_electron[6] = gRandom->Uniform(0., time_constraint); // Regenerate time if it exceeds the constraint, scaling is not needed because time_limit is already in nanoseconds
-                }
+                //}
                 LOG(info) << "Transformed electron time: " << transformed_electron[6] << " ns";
                 mGenElectrons.push_back(transformed_electron);
             }
@@ -399,9 +399,9 @@ class GenTPCLoopers : public Generator
             return true;
         }
 
-        short int PoissonPairs()
+        unsigned int PoissonPairs()
         {
-            short int poissonValue;
+            unsigned int poissonValue;
             do
             {
                 // Generate a Poisson-distributed random number with mean mPoisson[0]
@@ -411,9 +411,9 @@ class GenTPCLoopers : public Generator
             return poissonValue;
         }
 
-        short int GaussianElectrons()
+        unsigned int GaussianElectrons()
         {
-            short int gaussValue;
+            unsigned int gaussValue;
             do
             {
                 // Generate a Normal-distributed random number with mean mGass[0] and stddev mGauss[1]
@@ -423,7 +423,7 @@ class GenTPCLoopers : public Generator
             return gaussValue;
         }
 
-        void SetNLoopers(short int &nsig_pair, short int &nsig_compton)
+        void SetNLoopers(unsigned int &nsig_pair, unsigned int &nsig_compton)
         {
             if(mPoissonSet) {
                 LOG(info) << "Poissonian parameters correctly loaded.";
@@ -461,8 +461,8 @@ class GenTPCLoopers : public Generator
         double mGauss[4] = {0.0, 0.0, 0.0, 0.0}; // Mean, Std, Min, Max
         std::vector<std::vector<double>> mGenPairs;
         std::vector<std::vector<double>> mGenElectrons;
-        short int mNLoopersPairs = -1;
-        short int mNLoopersCompton = -1;
+        unsigned int mNLoopersPairs = -1;
+        unsigned int mNLoopersCompton = -1;
         std::array<float, 2> mMultiplier = {1., 1.};
         bool mPoissonSet = false;
         bool mGaussSet = false;
@@ -495,7 +495,32 @@ class GenLoopersInjector : public Generator
                 exit(1);
             } else {
                 LOG(info) << "Interaction Time records has " << mInteractionTimeRecords.size() << " entries.";
+                mCollisionContext->printCollisionSummary();
             }
+            mTimeHist = new TH1D("time_hist", "Time Histogram", 10000, 0., 0.0007); // Histogram to store absolute time values of loopers with respect to collision time in ns
+            mStartTime = mInteractionTimeRecords[0].bc2ns();
+        }
+
+        ~GenLoopersInjector()
+        {
+            TFile *outputFile = TFile::Open("loopers_output.root", "RECREATE");
+            //if (mTimeHist) {
+            //    mTimeHist->Write();
+            //    delete mTimeHist;
+            //}
+            TCanvas *canvas = new TCanvas("c1", "Looper Time Histogram", 800, 600);
+            mTimeHist->Draw();
+            // Create lines for each interaction time record
+            for (const auto &record : mInteractionTimeRecords)
+            {
+                TLine *line = new TLine((record.bc2ns() - mStartTime)/1e9, 0, (record.bc2ns() - mStartTime)/1e9, mTimeHist->GetMaximum());
+                line->SetLineColor(kRed);
+                line->SetLineStyle(2); // Dashed line
+                line->SetLineWidth(2);
+                line->Draw("same");
+            }
+            canvas->Write();
+            outputFile->Close();
         }
 
         void setAdaptiveLoopers(Bool_t &adaptive)
@@ -522,6 +547,29 @@ class GenLoopersInjector : public Generator
             }
         }
 
+        void setFlatGas(Bool_t &flat, const Int_t &number = -1)
+        {
+            mFlatGas = flat;
+            if (mFlatGas) {
+                if (number < 0) {
+                    LOG(warn) << "Warning: Number of loopers per event must be non-negative! Switching option off.";
+                    mFlatGas = false;
+                    mFlatGasNumber = -1;
+                } else {
+                    mFlatGasNumber = number;
+                    // Calculate the number of loopers to inject adaptively
+                    unsigned int nLoopers = static_cast<unsigned int>(number);
+                    unsigned int nLoopersPairs = static_cast<unsigned int>(std::round(nLoopers * mLoopsFractionPairs));
+                    unsigned int nLoopersCompton = nLoopers - nLoopersPairs;
+                    mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
+                    mStartingTimeLoopersRatio = number / (mInteractionTimeRecords[1].bc2ns() - mInteractionTimeRecords[0].bc2ns()); // Ratio of loopers to time in seconds
+                }
+            } else {
+                mFlatGasNumber = -1;
+            }
+            LOG(info) << "Flat gas loopers: " << (mFlatGas ? "ON" : "OFF") << ", Number of loopers per event: " << mFlatGasNumber;
+        }
+
         void setLoopsFractions(float &fraction, float &fractionPairs)
         {
             if (fraction < 0 || fraction >= 1)
@@ -544,7 +592,9 @@ class GenLoopersInjector : public Generator
             // Trivial, real work in importParticles
             LOG(info) << "mCurrentEvent is " << mCurrentEvent;
             LOG(info) << "Current event time: " << ((mCurrentEvent < mInteractionTimeRecords.size() - 1) ? std::to_string(mInteractionTimeRecords[mCurrentEvent + 1].bc2ns() - mInteractionTimeRecords[mCurrentEvent].bc2ns()) : "Final Event till the end") << " ns";
-            mTimeLimit = (mCurrentEvent < mInteractionTimeRecords.size() - 1) ? mInteractionTimeRecords[mCurrentEvent + 1].bc2ns() - mInteractionTimeRecords[mCurrentEvent].bc2ns() : 0.0;
+            LOG(info) << "Current time offset wrt BC: " << mInteractionTimeRecords[mCurrentEvent].getTimeOffsetWrtBC() << " ns";
+            mTimeLimit = (mCurrentEvent < mInteractionTimeRecords.size() - 1) ? mInteractionTimeRecords[mCurrentEvent + 1].bc2ns() - mInteractionTimeRecords[mCurrentEvent].bc2ns() : mInteractionTimeRecords[1].bc2ns() - mInteractionTimeRecords[0].bc2ns();
+            mTimeLoopersRatio = mFlatGas ? (mFlatGasNumber / mTimeLimit) : 1.0; // Ratio of loopers to time in nanoseconds, if flat gas is used
             mCurrentEvent++;
             return true;
         }
@@ -632,25 +682,43 @@ class GenLoopersInjector : public Generator
                 }
                 // Check size of mParticles stack and set loopers accordingly if mAdaptiveLoopers is true
                 if (mAdaptiveLoopers) {
-                    int nParticles = mParticles.size();
-                    if (nParticles > 0)
-                    {
-                        // Calculate the number of loopers to inject adaptively
-                        short int nLoopers = static_cast<short int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFraction)));
-                        short int nLoopersPairs = static_cast<short int>(std::round(nLoopers * mLoopsFractionPairs));
-                        short int nLoopersCompton = nLoopers - nLoopersPairs;
-                        mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
-                        LOG(info) << "Adaptive loopers: " << nLoopers << " (pairs: " << nLoopersPairs << ", compton: " << nLoopersCompton << ")";
-                        if (mDecreasingLoopers) {
-                            mLoopsFraction = mLoopsFraction - mSlopeStep;
+                    unsigned int nLoopers, nLoopersPairs, nLoopersCompton;
+                    if (!mFlatGas){
+                        int nParticles = mParticles.size();
+                        if (nParticles > 0)
+                        {
+                            // Calculate the number of loopers to inject adaptively
+                            nLoopers = static_cast<unsigned int>(std::round((nParticles * mLoopsFraction) / (1 - mLoopsFraction)));
+                            nLoopersPairs = static_cast<unsigned int>(std::round(nLoopers * mLoopsFractionPairs));
+                            nLoopersCompton = nLoopers - nLoopersPairs;
+                            mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
+                            LOG(info) << "Adaptive loopers: " << nLoopers << " (pairs: " << nLoopersPairs << ", compton: " << nLoopersCompton << ")";
+                            if (mDecreasingLoopers)
+                            {
+                                mLoopsFraction = mLoopsFraction - mSlopeStep;
+                            }
+                        }
+                        else
+                        {
+                            LOG(info) << "No particles found in O2 Kinematics, no loopers will be generated";
+                            return false;
                         }
                     } else {
-                        LOG(info) << "No particles found in O2 Kinematics, no loopers will be generated";
-                        return false;
+                        // If flat gas loopers are used, set the number of loopers to mFlatGasNumber
+                        LOG(info) << "Flat gas loopers: " << mFlatGasNumber << " per event " << "with startingRatio " << mStartingTimeLoopersRatio << " with mTimeLoopersRatio: " << mTimeLoopersRatio;
+                        nLoopers = mFlatGasNumber*(mStartingTimeLoopersRatio / mTimeLoopersRatio);
+                        nLoopersPairs = static_cast<unsigned int>(std::round(nLoopers * mLoopsFractionPairs));
+                        nLoopersCompton = nLoopers - nLoopersPairs;
+                        mGenTPCLoopers->SetNLoopers(nLoopersPairs, nLoopersCompton);
+                        LOG(info) << "Flat gas loopers: " << nLoopers << " (pairs: " << nLoopersPairs << ", compton: " << nLoopersCompton << ")";
                     }
                 }
                 // Generate loopers using GenTPCLoopers
                 // this is valid also when number of loopers is fixed
+                if (mTimeLimit == 0.0){
+                    mTimeLimit = time_hist->GetXaxis()->GetXmax();
+                    LOG(info) << "Time limit for last event set to: " << mTimeLimit << " ns";
+                }
                 if (mTimeConstraint && mTimeLimit == 0.0) {
                     mGenTPCLoopers->generateEvent(time_hist.get());
                 } else if (mTimeLimit > 0.) {
@@ -667,6 +735,14 @@ class GenLoopersInjector : public Generator
                 auto loopers = genProcessor(mGenTPCLoopers.get());
                 LOG(info) << "Size of loopers: " << loopers.size();
                 mParticles.insert(mParticles.end(), loopers.begin(), loopers.end());
+                // Fill the time histogram with loopers time values
+                LOG(info) << "Filling time histogram with loopers time values starting from " << (mInteractionTimeRecords[mCurrentEvent - 1].bc2ns() - mStartTime) << " ns";
+                for (const auto &p : loopers) {
+                    LOG(info) << "Looper time: " << p.T() << " s";
+                    // Fill the histogram with absolute time values of loopers with respect to collision time
+                    // Normalise for loopers.size() the y axis
+                    mTimeHist->Fill(((mInteractionTimeRecords[mCurrentEvent - 1].bc2ns() - mStartTime)/1e9) + p.T());
+                }
                 LOG(info) << "Size mParticles at loopers stage " << mParticles.size();
             } else {
                 LOG(error) << "Failed to import particles from O2 Kinematics";
@@ -691,6 +767,12 @@ class GenLoopersInjector : public Generator
         std::vector<o2::InteractionTimeRecord> mInteractionTimeRecords; // Interaction time records from collision context
         int mCurrentEvent = 0; // Current event number, used for decreasing loopers
         double mTimeLimit = 0.0; // Time limit for the current event, used for decreasing loopers
+        TH1D *mTimeHist = nullptr; // Histogram to store absolute time values of loopers with respect to collision time
+        double mStartTime = 0.0; // Start time of the event, used for decreasing loopers
+        Bool_t mFlatGas = false; // Flag to indicate if flat gas loopers are used
+        Int_t mFlatGasNumber = -1; // Number of flat gas loopers per event
+        double mStartingTimeLoopersRatio = 1.0; // Ratio of number of loopers to the time interval between collision events
+        double mTimeLoopersRatio = 1.0; // Ratio of number of loopers to the time interval between collision events
 };
 
 } // namespace eventgen
@@ -704,8 +786,8 @@ class GenLoopersInjector : public Generator
 FairGenerator *
     Generator_TPCLoopers(std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
                          std::string poisson = "poisson.csv", std::string gauss = "gauss.csv", std::string scaler_pair = "scaler_pair.json",
-                         std::string scaler_compton = "scaler_compton.json", std::array<float, 2> mult = {1., 1.}, short int nloopers_pairs = 1,
-                         short int nloopers_compton = 1)
+                         std::string scaler_compton = "scaler_compton.json", std::array<float, 2> mult = {1., 1.}, unsigned int nloopers_pairs = 1,
+                         unsigned int nloopers_compton = 1)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
@@ -773,7 +855,8 @@ FairGenerator *
 // Loopers are considered adaptive by default, meaning that the number of loopers is determined by the number of particles in the kinematics file per event
 FairGenerator *
 GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::string model_pairs = "tpcloopmodel.onnx", std::string model_compton = "tpcloopmodelcompton.onnx",
-                     std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = true, bool decreasing_loopers = false, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
+                         std::string scaler_pair = "scaler_pair.json", std::string scaler_compton = "scaler_compton.json", bool time_constraint = true, bool decreasing_loopers = false,
+                         bool flat_gas = true, const int loops_num = 2000, float loopers_fraction = 0.05, float fraction_pairs = 0.08)
 {
     // Expand all environment paths
     model_pairs = gSystem->ExpandPathName(model_pairs.c_str());
@@ -871,5 +954,6 @@ GeneratorLoopersInjector(std::string kineFileName = "genevents_Kine.root", std::
     generator->setTimeConstraint(time_constraint);
     // set decreasing loopers distribution
     generator->setDecreasingLoopers(decreasing_loopers);
+    generator->setFlatGas(flat_gas, loops_num);
     return generator;
 }
