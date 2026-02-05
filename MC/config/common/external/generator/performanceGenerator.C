@@ -74,9 +74,29 @@ namespace o2
                     auto part = genMap[mTag]();
                     if(part.GetPdgCode() == 23) {
                         auto daughters = decayZ0(part);
+                        int startIdx = mParticles.size();  // Position where Z0 will be inserted
                         for (auto &dau : daughters)
                         {
                             mParticles.push_back(dau);
+                        }
+                        // Fix daughter/mother indices to reflect actual positions in mParticles
+                        // The decayZ0 uses local indices (relative to subparts), we need to offset them
+                        for (size_t i = 0; i < daughters.size(); i++) {
+                            int globalIdx = startIdx + i;
+                            // Adjust mother indices
+                            int motherIdx = mParticles[globalIdx].GetFirstMother();
+                            if (motherIdx >= 0) {
+                                mParticles[globalIdx].SetFirstMother(startIdx + motherIdx);
+                            }
+                            // Adjust daughter indices
+                            int firstDaughter = mParticles[globalIdx].GetFirstDaughter();
+                            int lastDaughter = mParticles[globalIdx].GetLastDaughter();
+                            if (firstDaughter >= 0) {
+                                mParticles[globalIdx].SetFirstDaughter(startIdx + firstDaughter);
+                            }
+                            if (lastDaughter >= 0) {
+                                mParticles[globalIdx].SetLastDaughter(startIdx + lastDaughter);
+                            }
                         }
                     } else {
                         mParticles.push_back(part);
@@ -329,56 +349,16 @@ namespace o2
                 }
                 for (int j = 0; j < event.size(); ++j)
                 {
-                    const Pythia8::Particle &p = event[j];
-                    if (p.id() == 23) // PDG code for Z0
-                    {
-                        // Push Z0 itself
-                        subparts.push_back(TParticle(p.id(), p.status(),
-                                                     -1, -1, -1, -1,
-                                                     p.px(), p.py(),
-                                                     p.pz(), p.e(),
-                                                     z0.Vx(), z0.Vy(), z0.Vz(), 0.0));
-                        subparts.back().SetStatusCode(o2::mcgenstatus::MCGenStatusEncoding(p.status(), 0).fullEncoding);
-                        subparts.back().SetUniqueID(mGenID);
-                        subparts.back().SetBit(ParticleStatus::kToBeDone, false);
-                        // Navigate through intermediate Z0s to find final decay products
-                        int iZ0 = j;
-                        while (event[iZ0].daughter1() != 0 &&
-                               event[event[iZ0].daughter1()].id() == 23)
-                        {
-                            iZ0 = event[iZ0].daughter1();
-                        }
-                        // Recursively collect all final-state descendants
-                        std::function<void(int)> collectAllDescendants = [&](int idx)
-                        {
-                            const Pythia8::Particle &particle = event[idx];
-                            subparts.push_back(TParticle(particle.id(), particle.status(),
-                                                         -1, -1, -1, -1,
-                                                         particle.px(), particle.py(),
-                                                         particle.pz(), particle.e(),
-                                                         p.xProd(), p.yProd(), p.zProd(), p.tProd()));
-                            subparts.back().SetStatusCode(o2::mcgenstatus::MCGenStatusEncoding(particle.status(), 0).fullEncoding);
-                            subparts.back().SetUniqueID(mGenID + 1);
-                            subparts.back().SetBit(ParticleStatus::kToBeDone,
-                                                   o2::mcgenstatus::getHepMCStatusCode(subparts.back().GetStatusCode()) == 1);
-                            // Not final-state, recurse through daughters
-                            if (!particle.isFinal())
-                            {
-                                int d1 = particle.daughter1();
-                                int d2 = particle.daughter2();
-                                if (d1 > 0)
-                                {
-                                    for (int k = d1; k <= d2; ++k)
-                                    {
-                                        collectAllDescendants(k);
-                                    }
-                                }
-                            }
-                        };
-                        // Start collecting from the final Z0
-                        collectAllDescendants(iZ0);
-                        break; // Found and processed the Z0
-                    }
+                    const Pythia8::Particle &particle = event[j];
+                    subparts.push_back(TParticle(particle.id(), particle.status(),
+                                                 particle.mother1(), particle.mother2(), particle.daughter1(), particle.daughter2(), // mother set to local index in subparts
+                                                 particle.px(), particle.py(),
+                                                 particle.pz(), particle.e(),
+                                                 particle.xProd(), particle.yProd(), particle.zProd(), particle.tProd()));
+                    subparts.back().SetStatusCode(o2::mcgenstatus::MCGenStatusEncoding(particle.statusHepMC(), particle.status()).fullEncoding);
+                    subparts.back().SetUniqueID(mGenID + 1);
+                    subparts.back().SetBit(ParticleStatus::kToBeDone,
+                                           particle.id() != 23 && o2::mcgenstatus::getHepMCStatusCode(subparts.back().GetStatusCode()) == 1);
                 }
                 return subparts;
             }
