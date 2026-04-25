@@ -848,6 +848,8 @@ for tf in range(1, NTIMEFRAMES + 1):
      # ATTENTION: CHANGING THE PARAMETERS/CUTS HERE MIGHT INVALIDATE THE QED INTERACTION RATES USED ELSEWHERE
      #
      ########################################################################################################
+     # recompute the number of workers to increase CPU efficiency
+     NWORKERS_TF = compute_n_workers(INTRATE, COLTYPE, n_workers_user = NWORKERS) if (not args.force_n_workers) else NWORKERS
 
      # determine final conf key for QED simulation
      QEDBaseConfig = "GeneratorExternal.fileName=$O2_ROOT/share/Generators/external/QEDLoader.C;QEDGenParam.yMin=-7;QEDGenParam.yMax=7;QEDGenParam.ptMin=0.001;QEDGenParam.ptMax=1.;QEDGenParam.xSectionHad="+str(XSecSys[COLTYPE])+";QEDGenParam.Z="+str(Zsys[COLTYPE])+";QEDGenParam.cmEnergy="+str(ECMS)+";Diamond.width[2]=6.;"
@@ -855,21 +857,22 @@ for tf in range(1, NTIMEFRAMES + 1):
      qed_detectorlist = ' ITS MFT FT0 FV0 FDD '
      if args.detectorList == 'ALICE2.1':
          qed_detectorlist = qed_detectorlist.replace('ITS', 'IT3')
-     QED_task['cmd'] = 'o2-sim -e TGeant3 --field ccdb -j ' + str('1') +  ' -o qed'                                   \
-                        + ' -n ' + str(NEventsQED) + ' -m ' + qed_detectorlist                                        \
-                        + ('', ' --timestamp ' + str(args.timestamp))[args.timestamp!=-1] + ' --run ' + str(args.run) \
-                        + ' --seed ' + str(TFSEED)                                                                    \
-                        + ' -g extgen '                                                                               \
-                        + ' --detectorList ' + args.detectorList + ' '                                                \
-                        + QEDCONFKEY
+   #   QED_task['cmd'] = 'o2-sim -e TGeant3 --field ccdb -j ' + str('1') +  ' -o qed'                                   \
+   #                      + ' -n ' + str(NEventsQED) + ' -m ' + qed_detectorlist                                        \
+   #                      + ('', ' --timestamp ' + str(args.timestamp))[args.timestamp!=-1] + ' --run ' + str(args.run) \
+   #                      + ' --seed ' + str(TFSEED)                                                                    \
+   #                      + ' -g extgen '                                                                               \
+   #                      + ' --detectorList ' + args.detectorList + ' '                                                \
+   #                      + QEDCONFKEY
+   # Replace the normal simulation with the fastgen simulation just developed
+     QED_task['cmd'] = 'o2-generators-qed-fast-gen -j ' + str(NWORKERS_TF) +  ' -n ' + str(NEventsQED) + ' -s ' + str(TFSEED)
      QED_task['cmd'] += '; RC=$?; QEDXSecCheck=`grep xSectionQED qedgenparam.ini | sed \'s/xSectionQED=//\'`'
      QED_task['cmd'] += '; echo "CheckXSection ' + str(QEDXSecExpected[COLTYPE]) + ' = $QEDXSecCheck"; [[ ${RC} == 0 ]]'
+     # Remove the cfm_*.onnx files after the generation
+     QED_task['cmd'] += '; rm -f cfm_*.onnx'
      # TODO: propagate the Xsecion ratio dynamically
      QEDdigiargs=' --simPrefixQED qed' +  ' --qed-x-section-ratio ' + str(QEDXSecExpected[COLTYPE]/XSecSys[COLTYPE])
      workflow['stages'].append(QED_task)
-
-   # recompute the number of workers to increase CPU efficiency
-   NWORKERS_TF = compute_n_workers(INTRATE, COLTYPE, n_workers_user = NWORKERS) if (not args.force_n_workers) else NWORKERS
 
    # produce the signal configuration
    SGN_CONFIG_task=createTask(name='gensgnconf_'+str(tf), tf=tf, cwd=timeframeworkdir)
