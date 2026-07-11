@@ -655,6 +655,15 @@ if includeQED:
       qedrate = INTRATE * QEDXSecExpected[COLTYPE] / XSecSys[COLTYPE]   # hadronic interaction rate * cross_section_ratio
       qedspec = 'qed' + ',' + str(qedrate) + ',10000000:' + str(NEventsQED)
 
+# global, one-shot download of the QED fast-generator ONNX models into
+# ${ALICEO2_CCDB_LOCALCACHE}/QEDFastGen; the per-timeframe qedsim tasks depend
+# on this task and only read the cached files, so nothing is downloaded twice
+# and no two tasks ever write the cache concurrently
+if includeQED:
+   QEDModelDownloadTask = createTask(name='qedmodeldownload', needs=[], cpu='1')
+   QEDModelDownloadTask['cmd'] = 'o2-generators-qed-fast-gen --download-models -d ALICE2'
+   workflow['stages'].append(QEDModelDownloadTask)
+
 PreCollContextTask['cmd'] = task_finalizer([
       '${O2_ROOT}/bin/o2-steer-colcontexttool',
       f'-i {interactionspecification}',
@@ -844,8 +853,9 @@ for tf in range(1, NTIMEFRAMES + 1):
      # recompute the number of workers to increase CPU efficiency
      NWORKERS_TF = compute_n_workers(INTRATE, COLTYPE, n_workers_user = NWORKERS) if (not args.force_n_workers) else NWORKERS
 
-     qedneeds=[GRP_TASK['name'], PreCollContextTask['name']]
-     QED_task=createTask(name='qedsim_'+str(tf), needs=qedneeds, tf=tf, cwd=timeframeworkdir, cpu=NWORKERS_TF)
+     qedneeds=[GRP_TASK['name'], PreCollContextTask['name'], QEDModelDownloadTask['name']]
+     # the fast generator runs single-threaded by default (raise with -j in the command below together with cpu=)
+     QED_task=createTask(name='qedsim_'+str(tf), needs=qedneeds, tf=tf, cwd=timeframeworkdir, cpu=1)
      ########################################################################################################
      #
      # ATTENTION: CHANGING THE PARAMETERS/CUTS HERE MIGHT INVALIDATE THE QED INTERACTION RATES USED ELSEWHERE
@@ -865,12 +875,10 @@ for tf in range(1, NTIMEFRAMES + 1):
    #                      + ' -g extgen '                                                                               \
    #                      + ' --detectorList ' + args.detectorList + ' '                                                \
    #                      + QEDCONFKEY
-   # Replace the normal simulation with the fastgen simulation just developed
-     QED_task['cmd'] = 'o2-generators-qed-fast-gen -j ' + str(NWORKERS_TF) +  ' -n ' + str(NEventsQED) + ' -s ' + str(TFSEED)
-     QED_task['cmd'] += '; RC=$?; QEDXSecCheck=`grep xSectionQED qedgenparam.ini | sed \'s/xSectionQED=//\'`'
-     QED_task['cmd'] += '; echo "CheckXSection ' + str(QEDXSecExpected[COLTYPE]) + ' = $QEDXSecCheck"; [[ ${RC} == 0 ]]'
-     # Remove the cfm_*.onnx files after the generation
-     QED_task['cmd'] += '; rm -f cfm_*.onnx'
+   # Replace the normal simulation with the fastgen simulation
+     QED_task['cmd'] = 'o2-generators-qed-fast-gen -j 1 -n ' + str(NEventsQED) + ' -s ' + str(TFSEED) + ' -d ALICE2'
+     # NOTE: the fast generator does not produce qedgenparam.ini, so the xSectionQED
+     # cross-check of the o2-sim path does not apply; the expected value is used directly below.
      # TODO: propagate the Xsecion ratio dynamically
      QEDdigiargs=' --simPrefixQED qed' +  ' --qed-x-section-ratio ' + str(QEDXSecExpected[COLTYPE]/XSecSys[COLTYPE])
      workflow['stages'].append(QED_task)
