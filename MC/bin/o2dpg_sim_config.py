@@ -189,7 +189,9 @@ def create_geant_config(args, externalConfigString):
     # "--skipModules ZDC" still removes the module altogether.
     if not getattr(args, "with_ZDC", False) and "ZDC" not in getattr(args, "skipModules", []):
         add(config, {"ZDCSimParam.buildBeamLine" : "false"})
-    add(config, {"GenTPCLoopers.colsys" : args.col})
+    # the loopers are a background of the detector, so with embedding they follow the collision
+    # system of the background, which is what the collision context and its interaction rate describe
+    add(config, {"GenTPCLoopers.colsys" : args.colBkg if args.embedding in (True, 'True') else args.col})
 
     # ----- apply external overwrites from command line -------
     for keyval in externalConfigString.split(";"):
